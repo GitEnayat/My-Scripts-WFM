@@ -252,9 +252,6 @@ if (str.length > 0) {
 html += getCloseTags(lastConfig);
 }
 return html;
+console.log(html);
 }
-
-
-
-
 
