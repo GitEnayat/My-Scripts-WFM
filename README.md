@@ -1,96 +1,78 @@
-# Google Workspace Email Automation Framework
+# 📧 Universal Email Automation Engine
 
-A production-ready email templating and drafting framework built on  
-**Google Docs, Google Sheets, and Gmail** using **Google Apps Script**.
+A high-performance, modular Google Apps Script library designed to transform Google Docs tabs into dynamic, data-driven Gmail drafts. This system allows teams to manage professional email templates, recipient lists, and table data without touching a single line of code.
 
-This project is designed as an **internal platform**, not a one-off script.  
-It enables teams to author, manage, and send complex emails safely and consistently — without touching code.
+
 
 ---
 
-## 🚀 Why This Project Exists
+## ✨ Core Features
 
-Manual email workflows inside organizations are:
-- Error-prone (wrong dates, wrong recipients)
-- Time-consuming
-- Hard to standardize
-- Difficult to safely re-run
-
-This framework solves those problems by introducing:
-- Doc-based templates
-- Dynamic data injection
-- Spreadsheet-powered tables
-- Role-based distribution lists
-- Safe Gmail draft recycling
+* **Doc-to-Draft Engine:** Uses individual Google Doc tabs as email templates, allowing for easy multi-report management.
+* **Dynamic Dictionary:** Supports live placeholders like `{{DATE:Today}}`, `{{RAMCO}}`, and `{{GREETING}}` that resolve at the moment of creation.
+* **Table Injection:** Renders live, formatted Google Sheet ranges (including support for Smart Chips) directly into the email body.
+* **Safe Draft Recycling:** Identifies existing drafts with the same subject and updates them instead of creating duplicates—keeping your Drafts folder clean.
+* **Identity Management:** Generates professional, Base64-encoded signatures based on user profiles fetched from a central database.
+* **Formatting Preservation:** Maintains bolding, colors, and links from the source Google Doc.
 
 ---
 
-## ✨ Key Features
+## 📂 Project Architecture
 
-### 📄 Doc-Based Email Templates
-- Email templates are authored in **Google Docs**
-- Each template lives in its own **Doc tab**
-- Supports:
-  - Subject
-  - Body
-  - TO / CC sections
+The system is split into five functional modules to ensure long-term maintainability:
 
----
-
-### 🧠 Dynamic Dictionary Engine
-Templates support inline commands such as:
-- `{{DATE:Today}}`
-- `{{RANGE:MonthStart-1:Today-1}}`
-- `{{TIME}}`
-- `{{MONTHNAME:-1}}`
-- `{{GREETING}}`
-- Custom business logic (e.g., payroll cycles)
-
-All logic is centrally managed and safely executed.
+| File | Responsibility |
+| :--- | :--- |
+| **`Config.gs`** | Centralized IDs for the Template Doc, Data Spreadsheet, and Branding assets. |
+| **`TemplateEngine.gs`** | The core parser. Handles recursive tab searching and HTML conversion. |
+| **`TableRenderer.gs`** | Fetches Sheet data and generates CSS-styled HTML tables (including merged cells). |
+| **`RecipientResolver.gs`** | Resolves distribution tags into email lists and fetches sender signatures. |
+| **`DraftOrchestrator.gs`** | Orchestrates the final logic: thread searching, recycling, and draft creation. |
 
 ---
 
-### 📊 Spreadsheet → HTML Table Rendering
-- Inline `[Table]` directives inside Docs
-- Renders live Google Sheets ranges into HTML tables
-- Preserves:
-  - Cell formatting
-  - Colors
-  - Fonts
-  - Alignment
-  - Merged cells
-- Automatically trims empty rows
-- Fully Gmail-compatible HTML output
+## 🚀 Setup & Deployment
 
----
+### 1. Configure Global Variables
+Create a file named `Config.gs` and update it with your specific Google Drive IDs. This centralizes your "Source of Truth."
 
-### 👥 Role-Based Distribution Lists
-- Recipients resolved dynamically from Google Sheets
-- Supports:
-  - Role-based tags
-  - Workflow-based tags
-  - Direct email overrides
-- Results are cached per execution for performance
+```javascript
+/**
+ * PROJECT CONFIGURATION
+ */
+const TEMPLATE_DOC_ID = "YOUR_GOOGLE_DOC_ID";
+const DATA_SOURCE_ID = "YOUR_SPREADSHEET_ID";
+const BRAND_LOGO_ID = "YOUR_DRIVE_IMAGE_ID";
 
----
+// Default Localization
+const DEFAULT_TIMEZONE = "Asia/Kuala_Lumpur";
+const DEFAULT_TZ_LABEL = "MYT";
+const SIGNATURE_TAB_NAME = "Email_Signature";
+const USER_PROFILES_TAB = "User_Data";
+const CONTACT_GROUPS_TAB = "Distribution_Lists";
 
-### ✍️ Gmail Signature Engine
-- User-specific signatures generated automatically
-- Signature template authored in Google Docs
-- Embedded logo via **Base64** (no broken images)
-- Cached for performance and reliability
+### 2. Implementation: The Main Trigger
 
----
+To generate a draft, create a standalone script file (e.g., `Main.gs`) and call the orchestrator function. This is the primary entry point you will use to execute your automation.
 
-### 🛡️ Safe Gmail Draft Recycling
-- Prevents duplicate drafts
-- Re-running the same report updates the existing draft
-- Automatically detects:
-  - Existing drafts
-  - Existing threads
-  - Out-of-office replies (skipped safely)
+```javascript
+/**
+ * Example trigger function to generate a specific report.
+ * @param {string} "Morning_Status" - Must match the exact Tab Name in your Google Doc.
+ */
+function runMorningReport() {
+  createReportDraft("Morning_Status");
+}
 
----
+/**
+ * Example of overriding the default document for a one-off report.
+ */
+function runSpecialReport() {
+  createReportDraft("Special_Template", {
+    docId: "OPTIONAL_OVERRIDE_DOC_ID"
+  });
+}
 
-## 🧱 Architecture Overview
+
+
 
