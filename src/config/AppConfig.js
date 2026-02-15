@@ -58,6 +58,7 @@ class AppConfig {
   // Branding / assets
   get logoFileId() { return this.settings.logoFileId; }
   get signatureTemplateTab() { return this.settings.signatureTemplateTab; }
+  get logsTabName() { return this.settings.logsTabName; }
 
   // ==========================================
   // BACKWARD COMPATIBILITY ALIASES (Lib_Config naming)
@@ -106,7 +107,7 @@ class Lib_Config extends AppConfig {
  */
 function validateConfig(config) {
   const errors = [];
-  
+
   // Validate required Sheet IDs
   if (!config.templateDocumentId || config.templateDocumentId === "PASTE_TEMPLATE_DOC_ID") {
     errors.push("templateDocumentId is not set");
@@ -117,23 +118,23 @@ function validateConfig(config) {
   if (!config.linkRepositorySheetId || config.linkRepositorySheetId === "PASTE_LINK_SHEET_ID") {
     errors.push("linkRepositorySheetId is not set");
   }
-  
+
   // Validate tab names are not empty
   if (!config.recipientsTabName) errors.push("recipientsTabName is empty");
   if (!config.senderProfilesTabName) errors.push("senderProfilesTabName is empty");
   if (!config.linkRepositoryTabName) errors.push("linkRepositoryTabName is empty");
   if (!config.signatureTemplateTab) errors.push("signatureTemplateTab is empty");
-  
+
   // Validate column names are not empty
   if (!config.recipientEmailColumn) errors.push("recipientEmailColumn is empty");
   if (!config.linkKeyColumn) errors.push("linkKeyColumn is empty");
   if (!config.linkUrlColumn) errors.push("linkUrlColumn is empty");
-  
+
   // Validate tag columns is an array with at least one element
   if (!config.recipientTagColumns || !Array.isArray(config.recipientTagColumns) || config.recipientTagColumns.length === 0) {
     errors.push("recipientTagColumns must be a non-empty array");
   }
-  
+
   return {
     valid: errors.length === 0,
     errors: errors

@@ -5,194 +5,112 @@
 [![Status: Production](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)](https://github.com/anomalyco/opencode)
 [![Code Style: JSDoc](https://img.shields.io/badge/Code%20Style-JSDoc-blue)](https://jsdoc.app/)
 
-> **A robust Google Apps Script tool that bridges the gap between raw data and professional communication.**
+> **A robust, config-driven framework that bridges the gap between raw data and professional communication.**
+> *Automates 15+ daily operational reports, saving 10+ hours/week of manual toil.*
 
-### ⚡ Quick Start: The "TL;DR"
+---
 
-- **What:** A library that turns Google Doc tabs into high-fidelity Gmail drafts.
-    
-- **Who:** Built for **Operations, WFM, Analytics, HR, Finance, and Logistics teams**—or any organization managing high-volume, data-driven reporting across various industries.
-    
-- **Value:** Zero-code template management. Updates to Sheets or Docs propagate to emails instantly.
-    
-- **Impact:** Reduces manual report creation time by ~90% and eliminates copy-paste errors.
-    
+## ⚡ Quick Start (The "TL;DR")
 
-## 📖 What is this?
+- **What:** A library that turns Google Doc templates + Google Sheet data into high-fidelity Gmail drafts.
+- **Why:** Solves the "Copy-Paste" problem in Operations, WFM, and Finance.
+- **Key Features:**
+    - 🔒 **Safe:** Dry-Run mode, Test Mode, and Draft Recycling (Idempotency).
+    - 📊 **Observable:** Structured logging to "Run History" sheets.
+    - 🧩 **Modular:** Separated logic (Engine) from content (Docs) and config (Sheets).
 
-The **Universal Email Automation Engine** helps you send complex, data-heavy emails without writing a new script for every report.
+### 🎬 Visual Demo
+> *[Insert 30s GIF here: Showing a Template in Docs -> script execution -> resulting Gmail Draft]*
 
-It separates the **content** from the **code**. This means your team can update email templates in Google Docs and manage recipient lists in Google Sheets, while this engine handles the messy work of HTML formatting, token replacement, and secure delivery behind the scenes.
+---
 
-## 💡 The Problem This Solves (The "Why")
+## 🛠️ Engineering Highlights (For Hiring Managers)
 
-In high-volume environments like **Workforce Management (WFM)** or Operations, the journey from data to delivery is broken:
+This is not just a script; it's a **system** designed for reliability and scale.
 
-- **The Daily Grind:** Every morning, you open 10 spreadsheets, copy ranges, paste them into Gmail, fix broken borders, and pray the numbers are right.
-    
-- **The "Oops" Moments:** Sending an old report to a new manager or forgetting to change "Good Morning" to "Good Evening."
-    
-- **Maintenance Debt:** Hardcoding email addresses inside scripts is a nightmare—every staff change requires a developer to edit code.
-    
+### 1. Safety & Reliability First
+- **Dry Run Mode:** `generateEmailDraft("Report", { dryRun: true })` simulates execution without touching Gmail.
+- **Idempotency:** The engine checks for existing drafts before creating new ones. If a draft exists, it **updates** it. This prevents "draft spam" if the script runs multiple times.
+- **Test Mode:** `userOverrides: { testMode: true }` forces all emails to go to the developer, regardless of the template's distribution list.
 
-**This engine transforms that workflow:**
+### 2. Observability & Logging
+- **Run History:** Every execution (success or failure) is logged to a `System_Logs` sheet with:
+    - Timestamp & User
+    - Duration (ms)
+    - Status (CREATED, UPDATED, ERROR)
+    - Mode (PROD, TEST, DRY_RUN)
+- **Structured Logs:** Codebase uses a `LoggerUtil` for consistent log levels (INFO, WARN, ERROR).
 
-1. **Sheet-to-HTML & Doc-to-HTML:** It generates tables that look exactly like your spreadsheet (colors, borders, and all) while simultaneously converting Google Doc structures (headings, lists, bolding) into professional HTML email bodies.
-    
-2. **Dynamic Roles:** You can connect this to your internal headcount or user file. The engine dynamically adds all recipients as long as they carry the correct tags or roles (e.g., Managers, Team Leaders, Analysts), removing manual maintenance.
-    
-3. **Modular Library:** One central "Engine" powers dozens of different "Client" report scripts. It is incredibly easy to scale and add new reports without writing new logic. Once installed, it is simple to maintain; a single update to the library propagates to all your reports instantly.
-    
+### 3. "Fail Fast" Validation
+- **Template Validator:** Pre-flight checks ensure templates exist and tags are valid *before* fetching data, saving API quotas and reducing partial failures.
 
-## 🏗️ System Architecture & Engineering
+### 4. Architecture
+*(See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed Mermaid diagrams and Decision Records)*
 
-I designed this as a scalable system, not just a quick-fix script.
+The system follows a strict **Pipeline Pattern**:
+`Config Load` -> `Template Parse (Doc)` -> `Dictionary Resolution` -> `Recipient Resolution` -> `Draft Orchestration`.
 
-### 1. Smart Drafts (Idempotency)
+---
 
-Automation can be scary if it runs twice. This engine features **"Safe Draft Recycling."** Before creating a new email, it checks your Drafts folder. If a draft with the same subject exists, it _updates_ it instead of creating a duplicate.
+## 📖 For Operations Teams (The "User" View)
 
-### 2. Built for Non-Coders (The Dynamic Dictionary)
+### The Problem It Solves
+In high-volume environments like **Workforce Management (WFM)**, managers spend hours manually assembling reports. This engine eliminates that toil.
 
-Stakeholders can "program" their own emails directly in a Google Doc using a **Domain-Specific Language (DSL)**. To use these, simply type the tag exactly as shown (including curly braces) anywhere in your document body or subject line.
+1.  **Write in Docs:** Create templates in Google Docs using simple tags like `{{GREETING}}` or `[Table]`.
+2.  **Manage in Sheets:** Update recipient lists in a central Google Sheet.
+3.  **Run:** The engine combines them into pixel-perfect emails.
 
-#### **A. Time & Greeting Tags**
+### Dynamic Dictionary Features
+- **Time/Date:** `{{DATE:Today}}`, `{{DATE:Today-1}}` (Yesterday), `{{GREETING}}` (Morning/Afternoon).
+- **Data Injection:** `[Table] Sheet: <ID>, range: 'Tab'!A1:D10` renders live spreadsheet ranges as HTML tables.
+- **Link Management:** `$LINK:Key, TEXT:Label$` injects centralized URLs (useful for updating dashboard links without editing templates).
 
-- `{{GREETING}}`: Smart logic that checks the current hour to say "Good Morning", "Good Afternoon", or "Good Evening".
-    
-- `{{TIME:BKK}}`: Inserts the current time for a specific region (e.g., Bangkok).
-    
-- `{{TIME:MYT}}`: Inserts current time in Malaysia Time.
-    
+---
 
-#### **B. Advanced Date Math**
+## 🚀 Usage & Deployment
 
-The engine supports dynamic date calculations so you never have to manually type a date again.
+### 1. Installation
+Deploy this script as a **Library** in your Google Apps Script environment.
 
-|Input Syntax|Example Result (If Today is 19-Jan)|
-|---|---|
-|`{{DATE:Today}}`|**19-Jan-2026**|
-|`{{DATE:Today-1}}`|**18-Jan-2026** (Yesterday)|
-|`{{DATE:Today+7}}`|**26-Jan-2026** (Next week)|
-|`{{DATE:MonthStart}}`|**01-Jan-2026**|
-|`{{RANGE:MonthStart:Today}}`|**01-Jan-2026 – 19-Jan-2026**|
-|`{{MONTH}}`|**January**|
-
-#### **C. Data Injection**
-
-- `[Table] Sheet: <ID>, range: 'Tab'!A1:D10`: Injects a live data range from any Google Sheet you have access to.
-    
-
-## 🖼️ Visual Example: From Doc to Inbox
-
-### 1. The Template (Google Doc Tab)
-
-    [TO] Mangers , Leaders 
-    [CC] TeamA
-    
-    [SUBJECT]  Ops Update - {{DATE:Today}}
-    [BODY]
-    Hi Team, {{GREETING}} 
-    Here is the performance for the previous shift:
-    
-    [Table] Sheet: URL..., range: 'Daily_Stats'!A1:E10
-    
-    Regards,
-     {{SIGNATURE}}
-
-     
-### 2. The Result (Gmail Draft)
-
-
-    to: manger1@company.com , leader1@company.com, leader2@company.com 
-    cc: TeamA@company.com
-    
-    Subject:Ops Update - 01-01-2026
-
-    Hi Team, Good Morning, 
-    
-    Here is the performance for the previous shift:
-    
-    |... ( A table Styled with borders and colors from Sheets)
-      
-      Regards,
-      
-    Professional User Signature$$
-
-
-## ✨ Core Components & Setup
-
-### 👥 Dynamic Distribution Lists (The Address Book)
-
-Instead of managing static lists for every report, create a centralized tab in your Sheet. The engine parses this structure to find recipients based on their **Functional Roles** (e.g., Manager, Team Leader, Analyst) or **Specific Teams** (e.g., Team A, Team B).
-
-|Name|Email|Role Key 1|Role Key 2|
-|---|---|---|---|
-|John Doe|`john@company.com`|`Manager`|`Team_A_Leads`|
-|Jane Smith|`jane@company.com`|`Team_B_Analysts`|`WFM_Updates`|
-
-- **Role-Based Parsing:** You can call a "Role Key" in your script, and the engine will automatically find everyone tagged with that role. For example, calling `Team_A_Leads` collects all Managers and Leads associated with that specific group.
-    
-- **Scalability:** If you link this to an internal headcount file, the email recipients update automatically whenever someone is promoted or moves teams—no code edits required.
-    
-
-### ✍️ Professional Signatures
-
-The engine fetches your professional signature from a centralized `User_Profiles` sheet. This ensures that even if a bot creates the draft, it looks like it came directly from you, complete with branding and contact links.
-
-### 🎨 High-Fidelity Table Rendering
-
-Gmail's CSS support is limited. My `TableRenderer` converts modern Google Sheet formatting into **inline CSS styles** and handles **merged cells** (rowspan/colspan), ensuring your data looks professional on Outlook, Gmail Mobile, and Desktop.
-
-## 🚀 Usage Guide
-
-### Phase 1: Deployment
-
-1. Open the project code and click **Deploy** > **New Deployment** > **Library**.
-    
-2. Copy the **Script ID**.
-    
-
-### Phase 3: Implementation
-
-In your client script, add the Library and use the following code:
-
-```
-// Basic usage: One-time install, use forever
-function runMorningReport() {
-  // Finds everyone tagged with "Morning_Status" role
-  EmailEngine.createReportDraft("Morning_Status");
+### 2. Basic Usage
+```javascript
+function sendMorningReport() {
+  EmailEngine.generateEmailDraft("Morning_Status_Update");
 }
+```
 
-// Advanced: Use a specific template doc for a one-off project
-function runOneOffReport() {
-  EmailEngine.createReportDraft("Project_Alpha", {
-    docId: "INSERT_GOOGLE_DOC_ID_HERE"
+### 3. Advanced Usage (developer options)
+```javascript
+function testReport() {
+  EmailEngine.generateEmailDraft("Morning_Status_Update", {
+    dryRun: true,      // Log what WOULD happen
+    testMode: true,    // Send only to me
+    templateDocId: "..." // Override default doc
   });
 }
 ```
 
-## 🛡️ Security & Reliability
+### 4. Scheduling
+Use the built-in helper to schedule reports programmatically:
+```javascript
+function setupTriggers() {
+  // Run at 8:00 AM daily
+  Scheduler.scheduleDailyReport("Morning_Status_Update", 8);
+}
+```
 
-- **Data Privacy:** All processing happens within your Google Workspace tenant. No data ever leaves your organization's ecosystem.
-    
-- **Service Limits:** Optimized to handle complex templates within Google Apps Script's 6-minute execution window.
-    
-- **Platform Awareness:** Engineered specifically to bypass Gmail's legacy CSS constraints by using inline style injection.
-    
+---
 
-## 👤 Author & Engineering Philosophy
+## 👤 Author
 
-Built by **Enayatullh**
+**Enayatullh**
+*Operations Engineer & System Designer*
 
-This project reflects a commitment to **Systems Thinking**. Instead of solving one problem for one person, I built a modular framework that solves a category of problems for an entire organization.
+> "I build tools that turn data into action. This project reflects my philosophy of **Systems Thinking**: building frameworks that solve entire categories of problems, not just one-off tasks."
 
-- **Engineering Impact:** Automated 15+ daily operational reports, saving an estimated 10+ hours of manual toil per week.
-    
-- **Core Skills:** JavaScript (ES6+), Google Workspace APIs, Regex Parsing, HTML/CSS Optimization.
-    
-- **Contact:**
-    
-    
+- **Role Focus:** Automation Engineering, Internal Tools, WFM Systems.
+- **Tech Stack:** JavaScript (ES6+), Google Workspace APIs, regex, HTML/CSS.
 
-_© 2026 Universal Email Automation Engine. Released under MIT License._
+---
+_© 2026 Universal Email Automation Engine. released under MIT License._

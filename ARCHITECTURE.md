@@ -6,47 +6,76 @@ The Universal Email Automation Engine is a Google Apps Script-based framework th
 
 ## Module Structure
 
-```
-src/
-├── config/
-│   └── AppConfig.js              # Configuration management
-├── core/
-│   └── MailOrchestrator.js       # Main orchestration logic
-├── integrations/
-│   └── LinkRepository.js         # CMS link management
-├── recipients/
-│   └── RecipientService.js       # Distribution lists & signatures
-├── rendering/
-│   └── SheetTableRenderer.js     # Table HTML generation
-├── template-engine/
-│   └── TemplateService.js        # Template parsing & dictionary
-└── utils/
-    └── LoggerUtil.js             # Structured logging utility
+```mermaid
+classDiagram
+    class MailOrchestrator {
+        +generateEmailDraft()
+        +generateBatchDrafts()
+    }
+    class AppConfig {
+        +templateDocumentId
+        +directorySheetId
+    }
+    class TemplateService {
+        +fetchTemplate()
+        +applyDictionary_()
+    }
+    class LinkRepository {
+        +loadLinkRepository()
+        +injectManagedLinks()
+    }
+    class RecipientService {
+        +resolveRecipients()
+        +generateUserSignature()
+    }
+    class SheetTableRenderer {
+        +processTables()
+    }
+
+    MailOrchestrator --> AppConfig : Init
+    MailOrchestrator --> TemplateService : Parse Doc
+    MailOrchestrator --> LinkRepository : Inject Links
+    MailOrchestrator --> RecipientService : Get Emails
+    TemplateService --> SheetTableRenderer : Render Tables
 ```
 
 ## Module Dependencies
 
-```
-MailOrchestrator
-├── AppConfig (configuration)
-├── TemplateService
-│   ├── Dictionary Engine (applyDictionary_)
-│   ├── HTML Converter (convertElementToHtml_)
-│   └── Table Renderer (processTables)
-├── LinkRepository
-├── RecipientService
-└── GmailApp (external)
-```
+(See Class Diagram above)
 
 ## Data Flow
 
-1. **Initialization**: `MailOrchestrator` creates `AppConfig` with optional overrides
-2. **Template Fetch**: `TemplateService.fetchTemplate()` parses Google Doc tabs
-3. **Dictionary Processing**: `applyDictionary_()` replaces `{{TAGS}}` with dynamic values
-4. **Link Injection**: `LinkRepository.injectManagedLinks()` processes `$LINK...$` tags
-5. **Recipient Resolution**: `RecipientService.resolveRecipients()` maps tags to emails
-6. **Signature Generation**: `RecipientService.generateUserSignature()` adds user signature
-7. **Draft Creation**: `GmailApp.createDraft()` or `draft.update()` creates/updates draft
+```mermaid
+sequenceDiagram
+    participant User
+    participant Orchestrator as MailOrchestrator
+    participant Config as AppConfig
+    participant Template as TemplateService
+    participant Links as LinkRepository
+    participant Recipients as RecipientService
+    participant Gmail as GmailApp
+
+    User->>Orchestrator: generateEmailDraft("Morning_Report")
+    Orchestrator->>Config: Load Defaults + Overrides
+    
+    Orchestrator->>Template: fetchTemplate("Morning_Report")
+    Template-->>Orchestrator: {subject, body, to_tags}
+    
+    Orchestrator->>Links: loadLinkRepository()
+    Orchestrator->>Links: injectManagedLinks(body)
+    
+    Orchestrator->>Recipients: resolveRecipients(to_tags)
+    Recipients-->>Orchestrator: ["user1@company.com", "user2@company.com"]
+    
+    Orchestrator->>Recipients: generateUserSignature()
+    
+    Orchestrator->>Gmail: search(subject)
+    alt Draft Exists
+        Orchestrator->>Gmail: update(draft)
+    else New Draft
+        Orchestrator->>Gmail: createDraft()
+    end
+```
 
 ## Key Components
 
