@@ -1,10 +1,12 @@
-# Universal Email Automation Engine - Architecture
+# Architecture Overview
 
-## System Overview
+## System Context
 
-The Universal Email Automation Engine is a Google Apps Script-based framework that converts Google Doc templates into professional Gmail drafts, with support for dynamic data injection, recipient management, and HTML formatting.
+The **Google Workspace Email Orchestrator** is a script-based automation tool that runs within the Google Apps Script environment. It bridges the gap between unstructured content (Docs) and structured data (Sheets) to produce formatted emails (Gmail).
 
 ## Module Structure
+
+The codebase is split into small modules, each responsible for one part of the workflow:
 
 ```mermaid
 classDiagram
@@ -39,11 +41,9 @@ classDiagram
     TemplateService --> SheetTableRenderer : Render Tables
 ```
 
-## Module Dependencies
+## Data Flow Pipeline
 
-(See Class Diagram above)
-
-## Data Flow
+The system follows a linear pipeline pattern for each execution:
 
 ```mermaid
 sequenceDiagram
@@ -75,238 +75,68 @@ sequenceDiagram
     else New Draft
         Orchestrator->>Gmail: createDraft()
     end
+    
+    opt Action == SEND
+        Orchestrator->>Gmail: send(draft)
+    end
 ```
 
-## Key Components
+## Component Breakdown
 
-### 1. AppConfig (src/config/AppConfig.js)
-**Purpose**: Centralized configuration with environment overrides
+### 1. AppConfig (Configuration)
+A central configuration layer that stores environment IDs (Docs, Sheets) and supports runtime overrides for testing and development. (Doc IDs, Sheet IDs). It supports runtime overrides, allowing the script to switch between "Test" and "Production" resources dynamically.
 
-**Key Features**:
-- Default values for all required settings
-- Constructor accepts override object
-- Backward compatibility aliases (Lib_Config)
-- Validation helper (`validateConfig()`)
+### 2. MailOrchestrator (Core Logic)
+- The main controller. It coordinates the data flow and handles "fail-fast" logic.
+-   **LockService**: Designed to support locking via LockService to prevent concurrent executions when triggered automatically.
+-   **Draft Recycling**: Searches for existing drafts matches by subject to avoid clutter.
+-   **Send vs Draft**: Configurable final action (`emailAction`) to either leave as draft or send immediately.
 
-**Configuration Categories**:
-- Template source (Google Doc ID)
-- Distribution lists (Sheet ID, tabs, columns)
-- Link repository (CMS Sheet ID, columns)
-- Assets (Logo file ID, signature tab)
+### 3. TemplateService (Parsing)
+Extracts content from Google Docs.
+-   **Dictionary Engine**: Replaces `{{KEY}}` tags with dynamic values.
+-   **HTML Conversion**: Converts Google Doc content into HTML suitable for Gmail drafts..
+ 
+### 4. SheetTableRenderer (Visualization)
+A dedicated renderer that converts Google Sheet ranges into HTML tables.
+-   **Formatting**: Attempts to preserve key formatting such as background colors, fonts, and borders.
+-   **Merges**: accurately handles `rowspan` and `colspan`.
 
-### 2. MailOrchestrator (src/core/MailOrchestrator.js)
-**Purpose**: Main entry point and workflow coordination
+## Reliability Patterns
 
-**Key Functions**:
-- `generateEmailDraft()`: Primary function for single template
-- `generateBatchDrafts()`: Batch processing multiple templates
-- `createReportDraft()`: Backward compatibility alias
-- `onOpen()`: Sheets UI menu registration
+### Concurrency Safety
+- The design anticipates concurrent trigger execution and is intended to use LockService to avoid duplicate runs.
 
-**Workflow**:
-1. Validate config
-2. Fetch and parse template
-3. Process dictionary tags
-4. Inject managed links
-5. Resolve recipients
-6. Generate signature
-7. Check for existing drafts (recycling)
-8. Create or update Gmail draft
+### Quota Management
+-   **Batch Handling**: The `generateBatchDrafts` function includes a timer to stop execution before the 6-minute Apps Script limit is reached.
+-   **CacheService**: Used to reduce repeated Drive calls when generating signatures or loading shared assets.
 
-**Error Handling**:
-- Try/catch around Gmail API calls
-- Null-safety checks (e.g., `draftSubject && draftSubject.indexOf()`)
-- Graceful degradation (returns empty arrays/objects on failure)
+## Deployment Model
 
-### 3. TemplateService (src/template-engine/TemplateService.js)
-**Purpose**: Google Doc parsing and template processing
+This project is architected to be deployed as a **Google Apps Script Library**.
 
-**Key Functions**:
-- `fetchTemplate()`: Extracts content from Doc tabs
-- `applyDictionary_()`: Processes `{{TAGS}}` with dynamic values
-- `convertElementToHtml_()`: Converts Doc elements to HTML
-- `parseDateToken_()`: NLP date parsing ("next monday", "monthstart", etc.)
+-   **Library Mode**: The script is deployed once and typically has a fixed `HEAD` version or numbered versions.
+-   **Consumption**: Other scripts (e.g., container-bound scripts in specific Spreadsheets) add this project as a library.
+-   **Config Separation**: Configuration (`AppConfig`) is passed from the *consumer* script to the *library*, ensuring the core logic remains stateless and reusable across different departments or teams.
 
-**Supported Dictionary Tags**:
-- `{{DATE:Today-1}}` - Date arithmetic
-- `{{RANGE:MonthStart:Today}}` - Date ranges
-- `{{TIME:BKK}}` - Time with timezone
-- `{{MONTHNAME:-1}}` - Month names
-- `{{GREETING}}` - Time-based greeting
-- `{{ACTIVE_SPREADSHEET_LINK}}` - Dynamic URLs
+## Platform Constraints
 
-**HTML Conversion**:
-- Paragraphs → `<p>`
-- List items → `<li>` (wrapped in `<ul>` or `<ol>`)
-- Tables → `<table>` with inline styles
-- Horizontal rules → `<hr>`
-- Preserves formatting (bold, links, colors)
+This system is built within the boundaries of the Google Apps Script runtime:
 
-### 4. LinkRepository (src/integrations/LinkRepository.js)
-**Purpose**: Centralized link management via Google Sheet
+1.  **Execution Time**: Scripts have a hard limit (usually 6 minutes per execution). The Batch Orchestrator mitigates this, but large batches (>50 drafts) may need to be split.
+2.  **Email Quotas**: Google Workspace accounts have daily sending limits (e.g., 2,000 emails/day for Enterprise). This tool is for *internal* operations, not mass marketing.
+3.  **HTML Support**: Gmail's rendering engine has specific quirks. This tool focuses on "table-safe" HTML to ensure consistent rendering across devices.
 
-**Key Functions**:
-- `loadLinkRepository()`: Fetches links from CMS sheet
-- `injectManagedLinks()`: Replaces `$LINK:Key, TEXT:Label$` with `<a>` tags
+## Security & Privacy
 
-**Link Tag Format**:
-```
-$LINK:Report_URL, TEXT:Click Here$
-```
+-The script runs entirely within the user’s Google Workspace environment.
+No external servers or third-party APIs are used.
+Access is controlled through standard Google OAuth scopes granted during installation.
 
-**Features**:
-- HTML healing (strips formatting from within tags)
-- Direct URL fallback (if key is already a URL)
-- Error highlighting for missing keys
+## Trade-offs
 
-### 5. RecipientService (src/recipients/RecipientService.js)
-**Purpose**: Distribution list management and signature generation
+This project prioritizes simplicity and adoption inside Google Workspace over full email-platform flexibility.
 
-**Key Functions**:
-- `resolveRecipients()`: Maps role tags to email addresses
-- `generateUserSignature()`: Creates HTML signature with logo
-
-**Caching**:
-- `_DISTRO_CACHE_DATA`: Caches distribution list for single execution
-- `CacheService`: Caches Base64 logo (6-hour TTL, 75KB limit)
-
-**Signature Template Variables**:
-- `{{Sender_Name}}`
-- `{{Sender_Role}}`
-- `{{First_Email}}`
-- `{{Second_Email}}`
-- `{{Signature_Logo}}`
-
-### 6. SheetTableRenderer (src/rendering/SheetTableRenderer.js)
-**Purpose**: Converts Google Sheet ranges to HTML tables
-
-**Key Functions**:
-- `processTables()`: Scans for `[Table]` tags and replaces with HTML
-- `buildHtmlTableFromSheet_()`: Generates styled HTML table
-
-**Table Tag Format**:
-```
-[Table] Sheet: <URL_OR_ID>, range: 'SheetName'!A1:D10
-```
-
-**Features**:
-- Preserves formatting (colors, fonts, alignment)
-- Handles merged cells (rowspan/colspan)
-- Empty row trimming
-- Hidden column detection
-- Responsive column widths
-
-## Security Considerations
-
-1. **Data Privacy**: All processing within Google Workspace (no external APIs)
-2. **Script Authorization**: Requires Gmail, Drive, Sheets, and Docs permissions
-3. **No Secrets in Code**: All IDs configurable via AppConfig overrides
-4. **Input Validation**: Config validation helper checks required fields
-
-## Performance Optimizations
-
-1. **Caching**:
-   - Distribution lists cached per execution
-   - Logo Base64 cached in CacheService (6 hours)
-   - Link repository loaded once per batch
-
-2. **Batch Processing**:
-   - `generateBatchDrafts()` reuses config and link map
-   - Reduces redundant API calls
-
-3. **Draft Recycling**:
-   - Updates existing drafts instead of creating duplicates
-   - Reduces Gmail clutter
-
-## Error Handling Strategy
-
-1. **Graceful Degradation**:
-   - Missing templates return null (not crash)
-   - Missing links show error span (not crash)
-   - Missing recipients return empty array
-
-2. **Logging**:
-   - Structured logging with timestamps
-   - Module-specific loggers
-   - Emoji indicators for quick scanning
-
-3. **User Feedback**:
-   - UI alerts for critical errors
-   - Inline error messages in HTML (red spans)
-   - Detailed logs in Apps Script dashboard
-
-## Extension Points
-
-1. **New Dictionary Commands**:
-   Add case to `applyDictionary_()` switch statement
-
-2. **New Template Variables**:
-   Add replacement in `generateUserSignature()`
-
-3. **Custom Validators**:
-   Extend `validateConfig()` with project-specific checks
-
-4. **Pre/Post Processing**:
-   Hook into `generateEmailDraft()` before/after draft creation
-
-## Testing Strategy
-
-Recommended test coverage:
-
-1. **Unit Tests** (Pure Functions):
-   - `parseDateToken_()`: Date arithmetic
-   - `applyDictionary_()`: Tag replacement
-   - `parseRecipientKeys()`: Key parsing
-   - `fixMissingQuotes_()`: Range formatting
-
-2. **Integration Tests**:
-   - End-to-end draft creation
-   - Config validation
-   - Batch processing
-
-3. **Manual Testing**:
-   - UI menu functions (requires bound script)
-   - Gmail rendering across clients
-   - Sheet table formatting
-
-## Deployment
-
-1. **Library Deployment**:
-   - Deploy as Apps Script Library
-   - Share Script ID with users
-   - Version control for updates
-
-2. **Client Usage**:
-   ```javascript
-   function runReport() {
-     EmailEngine.generateEmailDraft("MyTemplate");
-   }
-   ```
-
-3. **Configuration**:
-   - Copy AppConfig with project-specific IDs
-   - Override via constructor or per-call
-
-## Known Limitations
-
-1. **Execution Time**: 6-minute Apps Script limit
-2. **Cache Size**: 100KB limit for CacheService
-3. **Gmail Quotas**: Daily sending limits apply
-4. **CSS Support**: Limited to inline styles for email compatibility
-
-## Risk Mitigations Implemented
-
-### Batch Processing Rate Limits
-- **Mitigation**: 5-minute execution time check with early exit
-- **Mitigation**: 500ms delay between iterations to prevent API throttling
-- **Result**: Templates skipped gracefully if time limit approached
-
-### UI Context Safety
-- **Mitigation**: `isUiContextAvailable_()` helper checks for container-bound context
-- **Mitigation**: All UI functions wrapped in try/catch blocks
-- **Result**: Graceful failure with helpful error messages in standalone mode
-
----
-
-*Last Updated: 2026-02-15 17:00*
-*Version: 1.0 - All Items Complete*
+Key trade-offs:
+- Built on Apps Script → constrained by execution time and quotas
+- Uses Google Docs as templates → easier for non-developers, but less precise than hand-written HTML

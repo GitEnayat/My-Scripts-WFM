@@ -35,8 +35,10 @@ class AppConfig {
       signatureTemplateTab: "Signature_Template",
 
       // System Logging
-      logsTabName: "System_Logs"
+      logsTabName: "System_Logs",
 
+      // Action: "DRAFT" (default) or "SEND"
+      emailAction: "DRAFT"
     };
 
     this.settings = { ...DEFAULTS, ...overrides };
@@ -62,6 +64,7 @@ class AppConfig {
   get logoFileId() { return this.settings.logoFileId; }
   get signatureTemplateTab() { return this.settings.signatureTemplateTab; }
   get logsTabName() { return this.settings.logsTabName; }
+  get emailAction() { return this.settings.emailAction; }
 
   // ==========================================
   // BACKWARD COMPATIBILITY ALIASES (Lib_Config naming)

@@ -13,20 +13,20 @@ FINAL VERSION: Integrated with AppConfig Class
  */
 function generateEmailDraft(templateTabName, userOverrides = {}) {
   const startTime = Date.now();
-  
+
   // Extract mode flags before merging with config
   const dryRun = userOverrides.dryRun === true;
   const testMode = userOverrides.testMode === true;
-  
+
   // Remove mode flags from overrides before creating config
   const cleanOverrides = { ...userOverrides };
   delete cleanOverrides.dryRun;
   delete cleanOverrides.testMode;
-  
+
   // 1. INITIALIZE CONFIGURATION
   // This merges your Master Defaults with any User Overrides automatically.
   const config = new AppConfig(cleanOverrides);
-  
+
   // Log mode status
   if (dryRun) {
     Log.info("MailOrchestrator", "🧪 DRY RUN MODE: No drafts will be created");
@@ -34,7 +34,7 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
   if (testMode) {
     Log.info("MailOrchestrator", "🧪 TEST MODE: All emails will be sent to current user only");
   }
-  
+
   // Enhancement 6.1: Structured Logging
   Log.info("MailOrchestrator", `Starting Report Generation for: "${templateTabName}"`);
   Log.info("MailOrchestrator", `Doc Source: ${config.templateDocumentId}`);
@@ -44,7 +44,7 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
   const template = fetchTemplate(templateTabName, config.templateDocumentId);
   if (!template) {
     Log.error("MailOrchestrator", `Runner Stopped: Template '${templateTabName}' returned null.`);
-    
+
     // Log failed execution
     const duration = Date.now() - startTime;
     logExecution("ERROR", templateTabName, {
@@ -53,7 +53,7 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
       testMode: testMode,
       duration: duration
     });
-    
+
     return { success: false, draftId: null, simulation: null };
   }
 
@@ -73,7 +73,7 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
   // Pass 'config' as the first argument to Distro Helper
   let recipientsTo = toKeys.length > 0 ? resolveRecipients(config, ...toKeys).join(",") : "";
   let recipientsCc = ccKeys.length > 0 ? resolveRecipients(config, ...ccKeys).join(",") : "";
-  
+
   // TEST MODE: Override recipients to current user only
   const currentUserEmail = Session.getActiveUser().getEmail();
   if (testMode) {
@@ -88,10 +88,10 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
   const sigObj = generateUserSignature(config);
   // Combine processed body + Signature
   const finalHtmlBody = processedBody + "<br><br>" + sigObj.html;
-  
+
   // Generate plaintext version for accessibility (P1 §3.1 fix)
   const plainTextBody = htmlToPlainText_(finalHtmlBody);
-  
+
   // DRY RUN: Log simulation and return early
   if (dryRun) {
     const simulation = {
@@ -102,7 +102,7 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
       bodyPreview: finalHtmlBody.substring(0, 200) + "...",
       actions: []
     };
-    
+
     // Check what would happen
     try {
       const existingDrafts = GmailApp.getDrafts();
@@ -110,26 +110,28 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
         const draftMessage = draft.getMessage();
         const draftSubject = draftMessage.getSubject();
         if (draftSubject && draftSubject.indexOf(template.subject) !== -1) {
-          simulation.actions.push(`Would UPDATE existing draft: "${draftSubject}"`);
-          Log.info("MailOrchestrator", `DRY RUN: Would update existing draft for "${template.subject}"`);
+          const actionVerb = config.emailAction === "SEND" ? "SEND updated" : "UPDATE";
+          simulation.actions.push(`Would ${actionVerb} existing draft: "${draftSubject}"`);
+          Log.info("MailOrchestrator", `DRY RUN: Would ${actionVerb.toLowerCase()} existing draft for "${template.subject}"`);
           return { success: true, draftId: null, simulation };
         }
       }
-      
+
       const threads = GmailApp.search(`subject:"${template.subject}"`, 0, 5);
+      const actionVerb = config.emailAction === "SEND" ? "SEND" : "CREATE";
       if (threads.length > 0) {
-        simulation.actions.push(`Would CREATE reply draft on thread: "${threads[0].getFirstMessageSubject()}"`);
-        Log.info("MailOrchestrator", "DRY RUN: Would create reply draft on existing thread");
+        simulation.actions.push(`Would ${actionVerb} reply draft on thread: "${threads[0].getFirstMessageSubject()}"`);
+        Log.info("MailOrchestrator", `DRY RUN: Would ${actionVerb.toLowerCase()} reply draft on existing thread`);
       } else {
-        simulation.actions.push(`Would CREATE new draft to: ${recipientsTo}`);
-        Log.info("MailOrchestrator", "DRY RUN: Would create new draft");
+        simulation.actions.push(`Would ${actionVerb} new draft to: ${recipientsTo}`);
+        Log.info("MailOrchestrator", `DRY RUN: Would ${actionVerb.toLowerCase()} new draft`);
       }
-      
+
     } catch (e) {
       simulation.actions.push(`Error during simulation: ${e.message}`);
       Log.error("MailOrchestrator", `DRY RUN Error: ${e.message}`);
     }
-    
+
     // Log dry run execution
     const duration = Date.now() - startTime;
     logExecution("DRY_RUN", templateTabName, {
@@ -138,7 +140,7 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
       duration: duration,
       recipientsTo: recipientsTo
     });
-    
+
     return { success: true, draftId: null, simulation };
   }
 
@@ -157,18 +159,25 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
           htmlBody: finalHtmlBody,
           cc: recipientsCc
         });
-        Log.info("MailOrchestrator", "Draft Updated Successfully.");
-        
+        let status = "UPDATED";
+        if (config.emailAction === "SEND") {
+          draft.send();
+          status = "SENT";
+          Log.info("MailOrchestrator", "Draft Updated & Sent (Action: SEND).");
+        } else {
+          Log.info("MailOrchestrator", "Draft Updated Successfully.");
+        }
+
         // Log successful execution
         const duration = Date.now() - startTime;
-        logExecution("UPDATED", templateTabName, {
+        logExecution(status, templateTabName, {
           draftId: draft.getId(),
           dryRun: dryRun,
           testMode: testMode,
           duration: duration,
           recipientsTo: recipientsTo
         });
-        
+
         return { success: true, draftId: draft.getId(), simulation: null }; // 🛑 EXIT: Work is done.
       }
     }
@@ -192,40 +201,48 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
   // 6. CREATE NEW DRAFT
   // ============================================================
   let draftId = null;
-  
+
   try {
+    let draft;
     if (targetThread) {
       // P1 §3.3: Reply-all inherits thread's original recipients, template's TO is ignored
       if (recipientsTo) {
         Log.warn("MailOrchestrator", `Reply-all mode active. Template TO recipients (${recipientsTo}) will be ignored in favor of thread participants.`);
       }
-      const draft = targetThread.createDraftReplyAll(plainTextBody, {
+      draft = targetThread.createDraftReplyAll(plainTextBody, {
         htmlBody: finalHtmlBody,
         cc: recipientsCc
       });
-      draftId = draft.getId();
       Log.info("MailOrchestrator", "New Draft Created (Reply Mode) on existing thread.");
     } else {
-      const draft = GmailApp.createDraft(recipientsTo, template.subject, plainTextBody, {
+      draft = GmailApp.createDraft(recipientsTo, template.subject, plainTextBody, {
         cc: recipientsCc,
         htmlBody: finalHtmlBody
       });
-      draftId = draft.getId();
       Log.info("MailOrchestrator", "New Draft Created (New Thread).");
     }
-    
+
+    draftId = draft.getId();
+
+    let status = "CREATED";
+    if (config.emailAction === "SEND") {
+      draft.send();
+      status = "SENT";
+      Log.info("MailOrchestrator", "New Draft Sent (Action: SEND).");
+    }
+
     // Log successful execution
     const duration = Date.now() - startTime;
-    logExecution("CREATED", templateTabName, {
+    logExecution(status, templateTabName, {
       draftId: draftId,
       dryRun: dryRun,
       testMode: testMode,
       duration: duration,
       recipientsTo: recipientsTo
     });
-    
+
     return { success: true, draftId: draftId, simulation: null };
-    
+
   } catch (e) {
     // Log error execution
     const duration = Date.now() - startTime;
@@ -236,7 +253,7 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
       duration: duration,
       recipientsTo: recipientsTo
     });
-    
+
     Log.error("MailOrchestrator", `Failed to create draft: ${e.message}`);
     throw e; // Re-throw to allow caller to handle
   }
@@ -253,7 +270,7 @@ function generateEmailDraft(templateTabName, userOverrides = {}) {
  */
 function htmlToPlainText_(html) {
   if (!html) return "";
-  
+
   return html
     // Replace <br>, <p> with newlines
     .replace(/<br\s*\/?>/gi, "\n")
@@ -306,20 +323,20 @@ function generateBatchDrafts(templateNames, sharedOverrides = {}) {
   const MAX_EXECUTION_TIME = 300000; // 5 minutes (safety margin before 6-min limit)
   const RATE_LIMIT_DELAY = 500; // 500ms delay between drafts
   const startTime = Date.now();
-  
+
   // Pre-load shared resources
   Log.info("MailOrchestrator", `Batch Processing: ${templateNames.length} templates`);
   const linkMap = loadLinkRepository(config);
   Log.info("MailOrchestrator", `Pre-loaded link repository with ${Object.keys(linkMap).length} entries`);
-  
+
   let successful = 0;
   let failed = 0;
   let skipped = 0;
   const errors = [];
-  
+
   for (let i = 0; i < templateNames.length; i++) {
     const templateName = templateNames[i];
-    
+
     // Check execution time limit
     const elapsedTime = Date.now() - startTime;
     if (elapsedTime > MAX_EXECUTION_TIME) {
@@ -327,36 +344,36 @@ function generateBatchDrafts(templateNames, sharedOverrides = {}) {
       skipped = templateNames.length - i;
       break;
     }
-    
+
     const batchStartTime = Date.now();
-    
+
     try {
       Log.info("MailOrchestrator", `--- Processing ${i + 1}/${templateNames.length}: ${templateName} ---`);
-      
+
       // Fetch template
       const template = fetchTemplate(templateName, config.templateDocumentId);
       if (!template) {
         throw new Error(`Template '${templateName}' not found`);
       }
-      
+
       // Process with pre-loaded link map
       const processedBody = injectManagedLinks(template.body, linkMap);
-      
+
       // Resolve recipients
       const toKeys = parseRecipientKeys(template.to);
       const ccKeys = parseRecipientKeys(template.cc);
       const recipientsTo = toKeys.length > 0 ? resolveRecipients(config, ...toKeys).join(",") : "";
       const recipientsCc = ccKeys.length > 0 ? resolveRecipients(config, ...ccKeys).join(",") : "";
-      
+
       // Generate signature
       const sigObj = generateUserSignature(config);
       const finalHtmlBody = processedBody + "<br><br>" + sigObj.html;
       const plainTextBody = htmlToPlainText_(finalHtmlBody);
-      
+
       // Check for existing draft (simplified - no recycling in batch)
       const threads = GmailApp.search(`subject:"${template.subject}"`, 0, 1);
       let draftId = null;
-      
+
       if (threads.length > 0) {
         const draft = threads[0].createDraftReplyAll(plainTextBody, {
           htmlBody: finalHtmlBody,
@@ -372,24 +389,24 @@ function generateBatchDrafts(templateNames, sharedOverrides = {}) {
         draftId = draft.getId();
         Log.info("MailOrchestrator", `Created new draft for "${templateName}"`);
       }
-      
+
       // Log successful batch item
       const batchDuration = Date.now() - batchStartTime;
-      logExecution("BATCH_CREATED", templateName, {
+      logExecution(config.emailAction === "SEND" ? "BATCH_SENT" : "BATCH_CREATED", templateName, {
         draftId: draftId,
         dryRun: false,
         testMode: false,
         duration: batchDuration,
         recipientsTo: recipientsTo
       });
-      
+
       successful++;
-      
+
       // Rate limiting: Small delay between iterations (except last)
       if (i < templateNames.length - 1) {
         Utilities.sleep(RATE_LIMIT_DELAY);
       }
-      
+
     } catch (e) {
       // Log failed batch item
       const batchDuration = Date.now() - batchStartTime;
@@ -399,13 +416,13 @@ function generateBatchDrafts(templateNames, sharedOverrides = {}) {
         testMode: false,
         duration: batchDuration
       });
-      
+
       Log.error("MailOrchestrator", `Failed to process "${templateName}": ${e.message}`);
       errors.push(`${templateName}: ${e.message}`);
       failed++;
     }
   }
-  
+
   // Log batch completion summary
   const totalDuration = Date.now() - startTime;
   logExecution("BATCH_COMPLETE", "BATCH_SUMMARY", {
@@ -414,7 +431,7 @@ function generateBatchDrafts(templateNames, sharedOverrides = {}) {
     duration: totalDuration,
     error: `Batch: ${successful} success, ${failed} failed, ${skipped} skipped`
   });
-  
+
   Log.info("MailOrchestrator", `Batch Complete: ${successful} successful, ${failed} failed, ${skipped} skipped (time limit)`);
   return { successful, failed, skipped, errors };
 }
@@ -465,7 +482,7 @@ function showTemplatePicker() {
     Logger.log("❌ UI Error: This function must be run from a Google Sheets/Docs container-bound script");
     return;
   }
-  
+
   try {
     const ui = SpreadsheetApp.getUi();
     const response = ui.prompt(
@@ -473,7 +490,7 @@ function showTemplatePicker() {
       'Enter template name (tab name from Google Doc):',
       ui.ButtonSet.OK_CANCEL
     );
-    
+
     if (response.getSelectedButton() === ui.Button.OK) {
       const templateName = response.getResponseText().trim();
       if (templateName) {
@@ -502,17 +519,17 @@ function showConfigDialog() {
     Logger.log("❌ UI Error: This function must be run from a Google Sheets/Docs container-bound script");
     return;
   }
-  
+
   try {
     const ui = SpreadsheetApp.getUi();
     const config = new AppConfig();
-    
+
     const message = `Current Configuration:\n\n` +
       `Template Doc: ${config.templateDocumentId.substring(0, 20)}...\n` +
       `Directory Sheet: ${config.directorySheetId.substring(0, 20)}...\n` +
       `Link Repository: ${config.linkRepositorySheetId.substring(0, 20)}...\n\n` +
       `To customize, call generateEmailDraft() with overrides.`;
-    
+
     ui.alert('⚙️ Email Engine Configuration', message, ui.ButtonSet.OK);
   } catch (e) {
     Log.error("MailOrchestrator", `showConfigDialog error: ${e.message}`);
