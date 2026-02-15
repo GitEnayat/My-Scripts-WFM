@@ -75,29 +75,28 @@ function parseRecipientKeys(rawString) {
 
 
 function applyDictionary_(text) {
-
   if (!text) return "";
 
+  // 1. HARDEN REGEX & PRE-CLEANING
+  // First, strip HTML tags from INSIDE the brackets: {{ <b>DATE</b> }} -> {{DATE}}
   const healedText = text.replace(/\{\{(.*?)\}\}/g, (match, inner) => {
     const cleanInner = inner
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/\s+/g, " ")
+      .replace(/<[^>]+>/g, "")      // Strip HTML
+      .replace(/&nbsp;/g, " ")      // NBSP -> space
+      .replace(/\s+/g, " ")         // Collapse spaces
       .trim();
     return "{{" + cleanInner + "}}";
   });
 
+  // 2. PARSE CLEAN TAGS
   return healedText.replace(/\{\{(.*?)\}\}/g, function (match, content) {
-
     try {
-
       const parts = content.split(":").map(p => p.trim());
       const command = parts[0].toUpperCase();
       const param1 = parts[1] || "Today";
       const param2 = parts[2] || "Today";
 
       switch (command) {
-
         case "DATE": return formatDate_(parseDateToken_(param1));
         case "RANGE": return formatDate_(parseDateToken_(param1)) + " - " + formatDate_(parseDateToken_(param2));
 
@@ -115,8 +114,6 @@ function applyDictionary_(text) {
           }
           return Utilities.formatDate(d, Session.getScriptTimeZone(), "MMMM yyyy");
 
-
-
         case "DATE_FORMAT":
           const dateObj = parseDateToken_(param1);
           const formatStr = parts[2] || "dd-MMM-yyyy";
@@ -125,39 +122,83 @@ function applyDictionary_(text) {
         case "ACTIVE_SPREADSHEET_LINK":
           return SpreadsheetApp.getActiveSpreadsheet().getUrl();
 
-        default: return match;
+        case "GREETING":
+          const h = new Date().getHours();
+          if (h < 12) return "Good Morning";
+          if (h < 17) return "Good Afternoon";
+          return "Good Evening";
 
+        default: return match; // Unknown tag, leave as is
       }
-
     } catch (e) {
       return "ERROR";
     }
-
   });
-
 }
 
 function parseDateToken_(token) {
+  const now = new Date();
+  const lowerToken = token.toLowerCase().trim();
 
-  let now = new Date();
-  const text = token.toLowerCase().replace(/\s+/g, "");
+  // 1. RELATIVE WORDS
+  if (lowerToken === "today") return now;
+  if (lowerToken === "yesterday") { now.setDate(now.getDate() - 1); return now; }
+  if (lowerToken === "tomorrow") { now.setDate(now.getDate() + 1); return now; }
 
+  if (lowerToken === "monthstart") {
+    now.setDate(1);
+    return now;
+  }
+  if (lowerToken.includes("weekstart")) {
+    const day = now.getDay(); // 0 (Sun) - 6 (Sat)
+    const diff = now.getDate() - day; // Adjust to Sunday
+    now.setDate(diff);
+    return now;
+  }
+
+  // 2. DAY ARITHMETIC (Today+7, Today-3)
+  if (lowerToken.startsWith("today")) {
+    const operator = lowerToken.includes("+") ? 1 : (lowerToken.includes("-") ? -1 : 0);
+    if (operator !== 0) {
+      const numPart = lowerToken.replace(/[^0-9]/g, "");
+      const days = parseInt(numPart, 10);
+      if (!isNaN(days)) {
+        now.setDate(now.getDate() + (days * operator));
+        return now;
+      }
+    }
+  }
+
+  // 3. WEEKDAY LOGIC (Monday, Next Friday, Last Sunday)
   const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-
-  let dayIndex = -1;
-  let mode = "dynamic";
-
+  let targetDay = -1;
   for (let i = 0; i < days.length; i++) {
-    if (text.includes(days[i])) { dayIndex = i; break; }
+    if (lowerToken.includes(days[i])) { targetDay = i; break; }
   }
 
-  if (dayIndex === -1) {
-    if (text.includes("yesterday")) now.setDate(now.getDate() - 1);
-    else if (text.includes("tomorrow")) now.setDate(now.getDate() + 1);
+  if (targetDay !== -1) {
+    const currentDay = now.getDay();
+    let diff = targetDay - currentDay;
+
+    // "Next Monday"
+    if (lowerToken.includes("next")) {
+      diff += 7;
+    }
+    // "Last Monday"
+    else if (lowerToken.includes("last")) {
+      diff -= 7;
+    }
+    // "Monday" (Assuming coming occurrence or today)
+    else {
+      // If we want "This coming Monday" logic:
+      if (diff < 0) diff += 7; // e.g. Today is Fri(5), Target is Mon(1). Diff = -4 -> +3 days.
+    }
+
+    now.setDate(now.getDate() + diff);
+    return now;
   }
 
-  return now;
-
+  return now; // Fallback to Today
 }
 
 function formatDate_(d) {

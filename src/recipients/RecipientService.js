@@ -131,14 +131,19 @@ function generateUserSignature(config) {
         const blob = DriveApp.getFileById(config.logoFileId).getBlob();
         b64 = Utilities.base64Encode(blob.getBytes());
         mime = blob.getContentType();
+
         // P2 §3.8: CacheService has 100KB limit - check size before caching
         const b64Size = b64.length;
-        if (b64Size > 75000) { // ~75KB limit to be safe (base64 inflates ~33%)
-          Logger.log(`⚠️ Logo size (${Math.round(b64Size/1024)}KB) exceeds cache limit, skipping cache. Consider using a smaller logo.`);
+        if (b64Size > 90000) { // Safety margin for 100KB limit
+          Logger.log(`⚠️ Logo size (${Math.round(b64Size / 1024)}KB) exceeds cache limit. Skipping cache.`);
         } else {
-          cache.put("SIG_LOGO_B64", b64, 21600);
-          cache.put("SIG_LOGO_MIME", mime, 21600);
-          Logger.log(`✅ Logo cached successfully (${Math.round(b64Size/1024)}KB)`);
+          try {
+            cache.put("SIG_LOGO_B64", b64, 21600);
+            cache.put("SIG_LOGO_MIME", mime, 21600);
+            Logger.log(`✅ Logo cached successfully (${Math.round(b64Size / 1024)}KB)`);
+          } catch (cacheErr) {
+            Logger.log(`⚠️ Cache Put Failed: ${cacheErr.message}. Continuing without cache.`);
+          }
         }
       }
       imgTag = `<img src="data:${mime};base64,${b64}" width="200" style="display:block; height:auto;">`;
@@ -156,10 +161,10 @@ function generateUserSignature(config) {
   // 4. Final Swap
   return {
     html: html
-      .replace(/\{\{Sender_Name\}\}/g,   userDetails.name)
-      .replace(/\{\{Sender_Role\}\}/g,   userDetails.role)
-      .replace(/\{\{First_Email\}\}/g,   userDetails.email1)
-      .replace(/\{\{Second_Email\}\}/g,  userDetails.email2)
+      .replace(/\{\{Sender_Name\}\}/g, userDetails.name)
+      .replace(/\{\{Sender_Role\}\}/g, userDetails.role)
+      .replace(/\{\{First_Email\}\}/g, userDetails.email1)
+      .replace(/\{\{Second_Email\}\}/g, userDetails.email2)
       .replace(/\{\{Signature_Logo\}\}/g, imgTag)
   };
 }
@@ -187,3 +192,4 @@ function getDistroEmails(config, ...args) {
 function getUserGmailSignature(config) {
   return generateUserSignature(config);
 }
+
